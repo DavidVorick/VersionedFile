@@ -1,0 +1,9 @@
+[package]
+name = "versioned-file"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+anyhow = "1.0"
+async-std = {version = "1.12", features = ["attributes"]}
+testdir = "0.7.0"
