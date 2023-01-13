@@ -18,7 +18,7 @@ a chain of upgrades that can be used to upgrade older versions of the file to th
 version. Finally, the identifier is also supplied so that an error can be thrown if the file
 has the wrong identifier.
 
-```
+```rs
 // Basic file operations
 use async_std::io::SeekFrom;
 use std::path::PathBuf;
@@ -43,7 +43,7 @@ async fn main() {
     }
 }
 ```
-```
+```rs
 // Simple upgrade example
 use async_std::io::SeekFrom;
 use std::path::PathBuf;
