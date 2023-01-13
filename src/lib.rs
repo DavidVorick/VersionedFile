@@ -395,7 +395,7 @@ async fn new_file_header(
     }
 
     // Prepare the full header and write it to the file.
-    let full_header = [0u8; 4096];
+    let mut full_header = [0u8; 4096];
     full_header[..header_bytes.len()].copy_from_slice(header_bytes);
     file.write_all(&full_header)
         .await
