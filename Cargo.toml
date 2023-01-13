@@ -1,6 +1,6 @@
 [package]
 name = "versioned-file"
-version = "0.1.0"
+version = "0.1.1"
 edition = "2021"
 description = "library for adding versions and upgrade schemes to files"
 license = "MIT"
