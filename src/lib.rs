@@ -16,7 +16,10 @@
 // TODO: We should add random occasional checks to the code which verify that the vf cursor matches
 // the file handle cursor.
 //
-// TODO: We should add a write-ahead-log like mechansim for file updates so that they are ACID.
+// TODO: Need to figure out how the versioned-file fits into a larger ACID ecosystem. Probably best
+// approach is to make it a base layer that doesn't provide any acid guarantees (beyond the header,
+// which is ACID compliant), and let larger transactional frameworks use versioned-file as a
+// building block.
 
 // NOTE: The way that we handle UpgradeFunc is unweildly and unfortunate. I was unable to figure
 // out a clean way to do async function pointers in rust, and the method that I did find started to
