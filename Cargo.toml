@@ -2,6 +2,9 @@
 name = "versioned-file"
 version = "0.1.0"
 edition = "2021"
+description = "library for adding versions and upgrade schemes to files"
+licesnse = "MIT"
+repository = "https://github.com/DavidVorick/versioned-file"
 
 [dependencies]
 anyhow = "1.0"
