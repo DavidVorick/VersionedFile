@@ -2,30 +2,6 @@
 #![deny(missing_docs)]
 #![deny(unused_must_use)]
 #![deny(unused_mut)]
-// TODO: Ideally we could add some safety here to avoid errors where we are close to running out of
-// disk space.
-//
-// TODO: Should probably have some linting mechanism here to ensure that we only use read_exact and
-// write_all.
-//
-// TODO: Should add a switch to VersionedFile so that we can simulate a broken filesystem for ACID
-// testing. Probably should have that switch accept a mutexed object which will tell it when to
-// start failing. Then we can have many files at the same time coordinate various types of
-// failures.
-//
-// TODO: We should add random occasional checks to the code which verify that the vf cursor matches
-// the file handle cursor.
-//
-// TODO: Need to figure out how the versioned-file fits into a larger ACID ecosystem. Probably best
-// approach is to make it a base layer that doesn't provide any acid guarantees (beyond the header,
-// which is ACID compliant), and let larger transactional frameworks use versioned-file as a
-// building block.
-
-// NOTE: The way that we handle UpgradeFunc is unweildly and unfortunate. I was unable to figure
-// out a clean way to do async function pointers in rust, and the method that I did find started to
-// have issues as soon as one of the arguments was a pointer itself. If someone wants to take a
-// stab at cleaning up the UpgradeFunc / WrappedUpgradeFunc structs and related code, improvements
-// would be much welcomed.
 
 //! The VersionedFile crate provides a wrapper to async_std::File which adds an invisible 4096 byte
 //! header to the file which tracks things like the file version number and the file identifier.
@@ -116,6 +92,37 @@
 //!     std::fs::remove_file(PathBuf::from("target/docs-example-file.txt"));
 //! }
 
+// TODO: We are going to make the entire VersionedFile ACID compliant, including all writes. We'll
+// probably establish that no data will be written to the file until a transaction is completed.
+// We'll wrap it with a `start_transaction` and `commit_transaction` API, and initially we'll
+// forbid multiple transactions from being open at the same time. When we do allow multiple
+// transactions, we'll make sure their is safety between them - it will error if two transactions
+// interact with overlapping data: we will track all the data that is being written by each
+// transaction, and we will error if the other transaction either reads or writes to a file
+// location that is being written to by the other. Both transcations reading the same location but
+// not writing there is okay.
+//
+// TODO: Should probably have some linting mechanism here to ensure that we only use read_exact and
+// write_all in the internal implementation of VersionedFile.
+//
+// TODO: After we've turned VersionedFile into a full WAL, we'll add some frameworks to it so that
+// users can provide a broken filesystem dependency to the VersionedFile, for the purposes of
+// running tests that simulate filesystem errors.
+
+// CONTRIBUTE: The way that we handle UpgradeFunc/wrap_upgrade_process is unweildly and
+// unfortunate. It's the best I was able to do myself, but I would not be surprised if a much
+// better technique exists. Pull requests to clean this up are warmly welcomed.
+//
+// CONTRIBUTE: VersionedFile has a fragile relationship between the cursor of a File handle and the
+// field `Versionedfile.cursor` - the two are not guaranteed to be in sync, but if they ever fall
+// out of sync there will be severe bugs that can cause data loss. Checking that the two are in
+// sync at runtime is expensive, but we could have a probabilistic check, where maybe one in 100
+// operations it checks that the two are in sync and throws a panic if the two fall out of sync.
+//
+// CONTRIBUTE: There is not great test coverage around error handling for VersionedFile, in
+// particular handling errors where the filesystem fails, especially around the 'needs_seek'
+// features. Extra test coverage is warmly welcomed.
+
 use async_std::fs::{File, OpenOptions};
 use async_std::io::prelude::SeekExt;
 use async_std::io::{ReadExt, SeekFrom, WriteExt};
@@ -127,21 +134,9 @@ use std::str::from_utf8;
 
 use anyhow::{bail, Context, Error, Result};
 
-/// UpgradeFunc is a pointer to a function that upgrades a file from one version to the next.
-/// The intended starting and ending versions are explicitly stated in the input. When the upgrade
-/// is complete, the file cursor will automatically be placed back at the start of the file.
-///
-/// It may seem rather redundant to explicitly declare the version transition in the input to the
-/// UpgradeFunc, as the version numbers are already stated multiple times elsewhere as well.
-/// Under normal circumstances, this redundancy would be seen as excessive, however a file upgrade
-/// has the potential to corrupt or destory data, so we want extra layers of protection to ensure
-/// that the wrong upgrade process is not called on a file.
-///
-/// This type is not usable until it has been wrapped with `wrap_upgrade_process`.
-
 /// UpgradeFunc defines the signature for a function that can be used to upgrade a
 /// VersionedFile. The UpgradeFunc function will receive the file that needs to be upgraded, and
-/// it will also receive the intended initial version and upgraded version. The version inputs
+/// it will also receive the intended initial and upgraded version. The version inputs
 /// allow the upgrade function to double check that the right upgrade is being used - if a bug in
 /// the library somehow causes the wrong upgrade to be used, the user may end up with corrupted
 /// data. For that reason, we place extra redundancy around the version checks.
@@ -184,7 +179,6 @@ pub struct Upgrade {
 ///
 /// If a function is not fully documented, it is safe to assume that the function follows the same
 /// convensions/rules as its equivalent function for async_std::File.
-#[derive(Debug)]
 pub struct VersionedFile {
     /// file houses the underlying file handle of the VersionedFile.
     file: File,
@@ -510,7 +504,7 @@ async fn perform_file_upgrade(filepath: &PathBuf, u: &Upgrade) -> Result<(), Err
             "unable to complete file upgrade from version {} to {}",
             u.initial_version, u.updated_version
         ))?;
-        // file drops automatically because it is moved into the path.process call.
+    // file drops automatically because it is moved into the path.process call.
 
     // Update the metadata to contain the new version string.
     let file = OpenOptions::new()
